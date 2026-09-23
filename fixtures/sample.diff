@@ -1,0 +1,16 @@
+diff --git a/src/auth.ts b/src/auth.ts
+index 1111111..2222222 100644
+--- a/src/auth.ts
++++ b/src/auth.ts
+@@ -1,8 +1,12 @@
+ export function login(user: string, password: string) {
+-  return checkDb(user, password);
++  // WARNING: intentional demo vulnerability
++  const query = "SELECT * FROM users WHERE name = '" + user + "' AND pw = '" + password + "'";
++  return db.raw(query);
+ }
+ 
+ export function publicConfig() {
+-  return { theme: "dark" };
++  return { theme: "dark", apiKey: process.env.SECRET_API_KEY };
+ }

@@ -1,0 +1,21 @@
+{
+  "name": "diff-review",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "pnpm --filter @diff-review/web dev",
+    "build": "pnpm --filter @diff-review/core build && pnpm --filter @diff-review/db build && pnpm --filter @diff-review/action build && pnpm --filter @diff-review/web build",
+    "build:action": "pnpm --filter @diff-review/action build",
+    "start": "pnpm --filter @diff-review/web start",
+    "lint": "pnpm --filter @diff-review/web lint",
+    "test": "pnpm --filter @diff-review/core test",
+    "db:generate": "pnpm --filter @diff-review/db db:generate",
+    "db:migrate": "pnpm --filter @diff-review/db db:migrate",
+    "db:seed": "pnpm --filter @diff-review/db db:seed",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

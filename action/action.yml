@@ -1,0 +1,40 @@
+name: "diff-review"
+description: "AI PR reviewer — structured findings, GitHub comments, dashboard ingest"
+author: "Tanmay Shinde"
+inputs:
+  github-token:
+    description: "GitHub token with pull-requests:write"
+    required: true
+  api-url:
+    description: "Dashboard ingest URL (…/api/ingest)"
+    required: true
+  ingest-secret:
+    description: "Shared DIFF_REVIEW_INGEST_SECRET"
+    required: true
+  groq-api-key:
+    description: "Groq API key (default provider)"
+    required: false
+  openai-api-key:
+    description: "OpenAI API key (optional)"
+    required: false
+  openrouter-api-key:
+    description: "OpenRouter API key (optional)"
+    required: false
+  llm-provider:
+    description: "groq | openai | openrouter"
+    required: false
+    default: "groq"
+  llm-model:
+    description: "Override model id"
+    required: false
+  max-diff-chars:
+    description: "Max characters of diff sent to the LLM"
+    required: false
+    default: "80000"
+  max-findings:
+    description: "Cap findings per run"
+    required: false
+    default: "20"
+runs:
+  using: "node20"
+  main: "dist/index.js"
