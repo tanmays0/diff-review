@@ -3,17 +3,74 @@
 ## Prerequisites
 
 - Vercel account (Hobby)
-- Postgres: Neon free **or** Supabase free (Docker Compose for local)
+- **Postgres: Neon free via Vercel Marketplace (recommended)** — avoids Supabase’s free-tier **2-project limit**
+- Alternative: Supabase free (only if you still have a free project slot) or Docker Compose for local
 - Groq (or OpenAI) API key for the Action
 
-> Supabase free-project limit: demo tables can live on an existing project, or use **Neon**. The Live UI ships with built-in **fixture** runs when `DATABASE_URL` is unset so the demo URL is never empty.
+> **Fixture fallback:** when `DATABASE_URL` is unset or the DB is unreachable, the Live UI still shows built-in **fixture** runs (honest `fixture` badges) so the demo URL is never empty. Seeded DB rows also use `mode=fixture` until a real Action ingest posts `mode=live`.
 
-## Vercel
+## Recommended free-tier path: Neon on Vercel
+
+1. Accept Neon marketplace terms (one-time):  
+   https://vercel.com/shindetanmay-gmailcoms-projects/~/integrations/accept-terms/neon?source=cli  
+   (or Vercel Dashboard → Integrations → Neon → accept terms)
+2. From the repo root:
 
 ```bash
 cd /Users/shind/diff-review
 vercel link --yes --project diff-review
-vercel env add DATABASE_URL          # Neon/Supabase connection string
+vercel --non-interactive integration add neon --no-claim -n diff-review-db \
+  -e production -e preview -e development
+# Neon injects DATABASE_URL (and related vars) into the project
+vercel env pull .env.local --yes
+```
+
+3. Confirm Vercel already has (or add):
+
+| Env | Where | Notes |
+|-----|--------|--------|
+| `DATABASE_URL` | Vercel (all envs) | From Neon integration |
+| `DIFF_REVIEW_INGEST_SECRET` | Vercel | Shared Bearer for `/api/ingest` |
+| `NEXT_PUBLIC_APP_URL` | Vercel | `https://diff-review-ten.vercel.app` |
+
+4. Migrate + seed (exact commands):
+
+```bash
+cd /Users/shind/diff-review
+vercel env pull /tmp/diff-review.env --environment=production --yes
+set -a && source /tmp/diff-review.env && set +a
+pnpm db:migrate   # applies packages/db/drizzle/*.sql
+pnpm db:seed      # inserts demo/diff-review-fixtures runs (mode=fixture)
+rm /tmp/diff-review.env
+```
+
+5. Redeploy:
+
+```bash
+vercel --prod
+```
+
+6. Verify in **Incognito**: https://diff-review-ten.vercel.app/runs — seeded runs from Postgres (not only in-code fixtures). Ingest still authorized with `DIFF_REVIEW_INGEST_SECRET`.
+
+## Secrets map (exact names)
+
+| Secret | Where | Value |
+|--------|--------|--------|
+| `DIFF_REVIEW_INGEST_SECRET` | **Vercel** → Project → Settings → Environment Variables (Production) | Shared random secret (Bearer for `/api/ingest`) |
+| `NEXT_PUBLIC_APP_URL` | **Vercel** | `https://diff-review-ten.vercel.app` |
+| `DATABASE_URL` | **Vercel** (required for seeded + **live** runs on dashboard) | Neon Postgres URL (preferred). Without it, UI falls back to in-code fixtures; ingest returns 503. |
+| `DIFF_REVIEW_API_URL` | **GitHub Actions** secrets | `https://diff-review-ten.vercel.app/api/ingest` |
+| `DIFF_REVIEW_INGEST_SECRET` | **GitHub Actions** secrets | **Same string** as Vercel |
+| `GROQ_API_KEY` | **GitHub Actions** secrets | From https://console.groq.com/keys |
+
+Optional LLM alternatives on the Action: `openai-api-key` / `openrouter-api-key` inputs (see `action/action.yml`).
+
+## Vercel (manual env, if not using Marketplace CLI)
+
+```bash
+cd /Users/shind/diff-review
+vercel link --yes --project diff-review
+vercel env add DATABASE_URL          # paste Neon connection string
 vercel env add DIFF_REVIEW_INGEST_SECRET
 vercel env add NEXT_PUBLIC_APP_URL   # https://diff-review-ten.vercel.app
 vercel --prod
@@ -28,24 +85,26 @@ Monorepo (root directory `apps/web`):
 
 ## Database
 
+Tables: `repositories`, `review_runs`, `findings`, `diff_review_users`.
+
 ```bash
-export DATABASE_URL='postgresql://…'
+export DATABASE_URL='postgresql://…'   # or source .env.local after vercel env pull
 pnpm db:migrate
 pnpm db:seed
 ```
 
-Tables: `repositories`, `review_runs`, `findings`, `diff_review_users`.
+**Supabase note:** free accounts are limited to **2 projects**. Prefer Neon on Vercel for this portfolio app so you do not burn a Supabase slot.
 
 Rotate `DIFF_REVIEW_INGEST_SECRET` if leaked. Never commit `.env*`.
 
 ## GitHub Action install (v1 primary)
 
-1. In the **consumer** repo → Settings → Secrets → Actions:
-   - `DIFF_REVIEW_API_URL` = `https://diff-review-ten.vercel.app/api/ingest`
-   - `DIFF_REVIEW_INGEST_SECRET` = same as Vercel
-   - `GROQ_API_KEY` = Groq key
-2. Copy [`docs/action-workflow.example.yml`](./action-workflow.example.yml) to `.github/workflows/diff-review.yml`
-3. Open a PR — Action posts a review and ingests a `live` run
+**Consumer = this repo** (`tanmays0/diff-review`) is preferred for the proof PR.
+
+1. Workflow path: [`.github/workflows/diff-review.yml`](./.github/workflows/diff-review.yml)  
+   (source template: [`docs/action-workflow.example.yml`](./docs/action-workflow.example.yml) → copy to that path in external repos)
+2. Repo → **Settings → Secrets and variables → Actions** → set the three Actions secrets above
+3. Open a PR — Action posts a review and (with `DATABASE_URL`) ingests a `live` run
 
 Permissions needed: `contents: read`, `pull-requests: write` (workflow already sets these).
 
@@ -71,8 +130,9 @@ GITHUB_WEBHOOK_SECRET=
 
 ## Action secrets summary
 
-| Secret | Value |
-|--------|--------|
-| `DIFF_REVIEW_API_URL` | `https://diff-review-ten.vercel.app/api/ingest` |
-| `DIFF_REVIEW_INGEST_SECRET` | same as web |
-| `GROQ_API_KEY` | Groq key |
+| Secret | Where | Value |
+|--------|--------|--------|
+| `DIFF_REVIEW_API_URL` | GitHub Actions | `https://diff-review-ten.vercel.app/api/ingest` |
+| `DIFF_REVIEW_INGEST_SECRET` | GitHub Actions + Vercel | same shared secret |
+| `GROQ_API_KEY` | GitHub Actions | Groq key |
+| `DATABASE_URL` | Vercel only | Neon/Postgres — required for dashboard seeded + **live** runs |

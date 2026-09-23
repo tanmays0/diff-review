@@ -1,12 +1,8 @@
-# Copy this file to: .github/workflows/diff-review.yml
-#
-# Same repo (tanmays0/diff-review): keep `uses: ./action` (requires checkout).
-# External consumer repo: change to `uses: tanmays0/diff-review/action@main`
-#
-# Required Actions secrets (repo → Settings → Secrets and variables → Actions):
-#   DIFF_REVIEW_API_URL      = https://diff-review-ten.vercel.app/api/ingest
-#   DIFF_REVIEW_INGEST_SECRET = same value as Vercel env DIFF_REVIEW_INGEST_SECRET
-#   GROQ_API_KEY              = from https://console.groq.com/keys
+# Consumer workflow for this monorepo (uses local composite action).
+# External repos: copy docs/action-workflow.example.yml and change
+#   uses: ./action
+# to
+#   uses: tanmays0/diff-review/action@main
 name: diff-review
 on:
   pull_request:

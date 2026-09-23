@@ -117,15 +117,25 @@ async function run(): Promise<void> {
       ? diffRes.data
       : String(diffRes.data ?? "");
 
-  if (!rawDiff.trim()) {
-    core.info("Empty diff — nothing to review");
+  // Drop generated Action bundles — they blow free-tier Groq TPM and aren't review targets.
+  const filteredDiff = rawDiff
+    .split(/(?=^diff --git )/m)
+    .filter((chunk) => {
+      if (!chunk.trim()) return false;
+      const head = chunk.slice(0, 240);
+      return !/action\/dist\//.test(head) && !/\.(?:cjs|map|lock)\b/.test(head);
+    })
+    .join("");
+
+  if (!filteredDiff.trim()) {
+    core.info("Empty diff after filtering generated paths — nothing to review");
     return;
   }
 
   const log = (m: string) => core.info(m);
   const result = await runReviewPipeline({
     mode,
-    diff: rawDiff,
+    diff: filteredDiff,
     repository: {
       fullName,
       githubRepoId: String(ctx.payload.repository?.id ?? ""),
@@ -140,9 +150,18 @@ async function run(): Promise<void> {
     log,
   });
 
-  const runId = await ingest(apiUrl, ingestSecret, result.ingest);
-  core.info(`Ingested run ${runId}`);
-  core.setOutput("run-id", runId);
+  try {
+    const runId = await ingest(apiUrl, ingestSecret, result.ingest);
+    core.info(`Ingested run ${runId}`);
+    core.setOutput("run-id", runId);
+  } catch (err) {
+    // PR comments may already be live; dashboard needs DATABASE_URL + matching secret.
+    const msg = err instanceof Error ? err.message : String(err);
+    core.warning(
+      `Ingest failed (dashboard will not show a live run until this is fixed): ${msg}`,
+    );
+    core.setOutput("run-id", "");
+  }
   core.setOutput("review-url", result.githubReviewUrl ?? "");
   core.setOutput("mode", mode);
 }

@@ -65,7 +65,7 @@ async function RunDetail({ id }: { id: string }) {
           </Link>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <h1
-              className="text-2xl font-semibold tracking-tight"
+              className="min-w-0 break-all text-xl font-semibold tracking-tight sm:text-2xl"
               style={{ fontFamily: "var(--font-ibm-mono), var(--font-mono)" }}
             >
               {run.repositoryFullName}#{run.prNumber}
@@ -146,7 +146,7 @@ async function RunDetail({ id }: { id: string }) {
                       {f.category}
                     </span>
                     <span
-                      className="text-sm"
+                      className="min-w-0 break-all text-sm"
                       style={{
                         fontFamily: "var(--font-ibm-mono), var(--font-mono)",
                       }}
