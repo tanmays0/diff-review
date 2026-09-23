@@ -28165,6 +28165,8 @@ async function chatComplete(provider, apiKey, model, userContent) {
     body: JSON.stringify({
       model,
       temperature: 0.1,
+      max_tokens: 2048,
+      ...provider === "groq" && model.includes("gpt-oss") ? { reasoning_effort: "low" } : {},
       messages: [
         { role: "system", content: REVIEW_SYSTEM_PROMPT },
         { role: "user", content: userContent }
@@ -28176,7 +28178,8 @@ async function chatComplete(provider, apiKey, model, userContent) {
     throw new Error(`LLM ${provider} error ${res.status}: ${errText.slice(0, 400)}`);
   }
   const data = await res.json();
-  const content = data.choices?.[0]?.message?.content;
+  const message = data.choices?.[0]?.message;
+  const content = (message?.content ?? message?.reasoning ?? "").trim();
   if (!content)
     throw new Error("LLM returned empty content");
   return content;

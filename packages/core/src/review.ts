@@ -79,6 +79,10 @@ async function chatComplete(
     body: JSON.stringify({
       model,
       temperature: 0.1,
+      max_tokens: 2048,
+      ...(provider === "groq" && model.includes("gpt-oss")
+        ? { reasoning_effort: "low" }
+        : {}),
       messages: [
         { role: "system", content: REVIEW_SYSTEM_PROMPT },
         { role: "user", content: userContent },
@@ -92,9 +96,16 @@ async function chatComplete(
   }
 
   const data = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
+    choices?: Array<{
+      message?: {
+        content?: string | null;
+        reasoning?: string | null;
+      };
+    }>;
   };
-  const content = data.choices?.[0]?.message?.content;
+  const message = data.choices?.[0]?.message;
+  // gpt-oss on Groq may put the answer in `reasoning` with empty `content`
+  const content = (message?.content ?? message?.reasoning ?? "").trim();
   if (!content) throw new Error("LLM returned empty content");
   return content;
 }
