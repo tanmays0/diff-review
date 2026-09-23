@@ -3,16 +3,15 @@
     "severity": "critical",
     "category": "security",
     "path": "src/auth.ts",
-    "startLine": 3,
+    "line": 3,
     "endLine": 4,
-    "body": "SQL is concatenated from user input — use parameterized queries to prevent injection."
+    "message": "SQL is concatenated from user input — use parameterized queries to prevent injection."
   },
   {
     "severity": "high",
     "category": "security",
     "path": "src/auth.ts",
-    "startLine": 8,
-    "endLine": 8,
-    "body": "Exposing SECRET_API_KEY in a public config object may leak credentials to clients."
+    "line": 8,
+    "message": "Exposing SECRET_API_KEY in a public config object may leak credentials to clients."
   }
 ]

@@ -1,13 +1,59 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
 import {
-  anchorFindings,
-  parseUnifiedDiff,
-  reviewDiff,
-  summarizeFindings,
-  truncateDiff,
+  runReviewPipeline,
+  type GithubReviewPoster,
   type LlmProvider,
 } from "@diff-review/core";
+
+function createOctokitPoster(
+  token: string,
+  log: (m: string) => void,
+): GithubReviewPoster {
+  const octokit = github.getOctokit(token);
+  return {
+    async postPullRequestReview(args) {
+      const review = await octokit.rest.pulls.createReview({
+        owner: args.owner,
+        repo: args.repo,
+        pull_number: args.pullNumber,
+        commit_id: args.commitId,
+        event: "COMMENT",
+        body: args.body,
+        comments: args.comments.length > 0 ? args.comments : undefined,
+      });
+      const reviewUrl =
+        (review.data as { html_url?: string }).html_url ??
+        `https://github.com/${args.owner}/${args.repo}/pull/${args.pullNumber}#pullrequestreview-${review.data.id}`;
+      log(`Posted GitHub review ${reviewUrl}`);
+      return {
+        reviewUrl,
+        commentUrls: args.comments.map(() => null),
+      };
+    },
+  };
+}
+
+async function ingest(
+  apiUrl: string,
+  secret: string,
+  payload: unknown,
+): Promise<string> {
+  const res = await fetch(apiUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${secret}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Ingest failed ${res.status}: ${text.slice(0, 400)}`);
+  }
+  const json = (await res.json()) as { id?: string };
+  return json.id ?? "";
+}
 
 async function run(): Promise<void> {
   const token = core.getInput("github-token", { required: true });
@@ -17,6 +63,8 @@ async function run(): Promise<void> {
   const model = core.getInput("llm-model") || undefined;
   const maxDiffChars = Number(core.getInput("max-diff-chars") || "80000");
   const maxFindings = Number(core.getInput("max-findings") || "20");
+  const modeInput = (core.getInput("mode") || "live").toLowerCase();
+  const mode = modeInput === "fixture" ? "fixture" : "live";
 
   const groqKey = core.getInput("groq-api-key") || process.env.GROQ_API_KEY || "";
   const openaiKey =
@@ -54,7 +102,6 @@ async function run(): Promise<void> {
   const fullName = `${owner}/${repo}`;
 
   const octokit = github.getOctokit(token);
-
   const diffRes = await octokit.request(
     "GET /repos/{owner}/{repo}/pulls/{pull_number}",
     {
@@ -75,69 +122,10 @@ async function run(): Promise<void> {
     return;
   }
 
-  const diff = truncateDiff(rawDiff, maxDiffChars);
-  const parsed = parseUnifiedDiff(diff, maxDiffChars);
-
-  core.info(
-    `Reviewing ${fullName}#${prNumber} (${diff.length} chars, truncated=${parsed.truncated})`,
-  );
-
-  const findings = await reviewDiff({
-    provider,
-    apiKey,
-    model,
-    maxFindings,
-    diff,
-    repoFullName: fullName,
-    prNumber,
-  });
-
-  const anchored = anchorFindings(findings, parsed);
-  const summary = summarizeFindings(anchored);
-
-  const inline = anchored
-    .filter((f) => f.anchored && f.position != null)
-    .slice(0, 20)
-    .map((f) => ({
-      path: f.path,
-      position: f.position!,
-      body: `**[${f.severity}/${f.category}]** ${f.body}\n\n<sub>diff-review</sub>`,
-    }));
-
-  const bodyFindings = anchored.filter((f) => !f.anchored || f.position == null);
-  const bodyParts = [
-    `## diff-review`,
-    summary,
-    parsed.truncated
-      ? `_Diff truncated to ${maxDiffChars} characters before analysis._`
-      : null,
-    bodyFindings.length
-      ? [
-          "### Additional findings (not line-anchored)",
-          ...bodyFindings.map(
-            (f) =>
-              `- **[${f.severity}/${f.category}]** \`${f.path}\`${f.startLine != null ? `:${f.startLine}` : ""} — ${f.body}`,
-          ),
-        ].join("\n")
-      : null,
-    "_Automated review — verify before acting._",
-  ].filter(Boolean);
-
-  const review = await octokit.rest.pulls.createReview({
-    owner,
-    repo,
-    pull_number: prNumber,
-    commit_id: headSha,
-    event: "COMMENT",
-    body: bodyParts.join("\n\n"),
-    comments: inline.length > 0 ? inline : undefined,
-  });
-
-  const reviewUrl =
-    (review.data as { html_url?: string }).html_url ??
-    `${prUrl}#pullrequestreview-${review.data.id}`;
-
-  const ingestBody = {
+  const log = (m: string) => core.info(m);
+  const result = await runReviewPipeline({
+    mode,
+    diff: rawDiff,
     repository: {
       fullName,
       githubRepoId: String(ctx.payload.repository?.id ?? ""),
@@ -145,39 +133,18 @@ async function run(): Promise<void> {
     prNumber,
     prUrl,
     headSha,
-    status: "completed" as const,
-    mode: "live" as const,
-    summary,
-    githubReviewUrl: reviewUrl,
-    findings: anchored.map((f) => ({
-      severity: f.severity,
-      category: f.category,
-      path: f.path,
-      startLine: f.startLine ?? null,
-      endLine: f.endLine ?? null,
-      body: f.body,
-      githubCommentUrl: null,
-    })),
-  };
-
-  const ingestRes = await fetch(apiUrl, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${ingestSecret}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(ingestBody),
+    maxDiffChars,
+    maxFindings,
+    llm: { provider, apiKey, model },
+    poster: mode === "live" ? createOctokitPoster(token, log) : undefined,
+    log,
   });
 
-  if (!ingestRes.ok) {
-    const text = await ingestRes.text();
-    throw new Error(`Ingest failed ${ingestRes.status}: ${text.slice(0, 400)}`);
-  }
-
-  const ingestJson = (await ingestRes.json()) as { id?: string };
-  core.info(`Ingested run ${ingestJson.id ?? "(unknown)"}`);
-  core.setOutput("run-id", ingestJson.id ?? "");
-  core.setOutput("review-url", reviewUrl);
+  const runId = await ingest(apiUrl, ingestSecret, result.ingest);
+  core.info(`Ingested run ${runId}`);
+  core.setOutput("run-id", runId);
+  core.setOutput("review-url", result.githubReviewUrl ?? "");
+  core.setOutput("mode", mode);
 }
 
 run().catch((err) => {

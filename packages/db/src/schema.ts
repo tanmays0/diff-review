@@ -7,7 +7,8 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-export const users = pgTable("users", {
+/** Optional OAuth identities (not required for public demo). */
+export const users = pgTable("diff_review_users", {
   id: uuid("id").defaultRandom().primaryKey(),
   githubId: text("github_id").unique(),
   login: text("login").notNull(),
@@ -18,7 +19,7 @@ export const users = pgTable("users", {
 
 export const repositories = pgTable("repositories", {
   id: uuid("id").defaultRandom().primaryKey(),
-  ownerUserId: uuid("owner_user_id").references(() => users.id),
+  ownerUserId: uuid("owner_user_id"),
   fullName: text("full_name").notNull(),
   githubRepoId: text("github_repo_id"),
   isDemo: boolean("is_demo").default(false).notNull(),

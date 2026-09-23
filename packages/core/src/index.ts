@@ -34,6 +34,18 @@ export {
 export {
   reviewDiff,
   summarizeFindings,
+  REVIEW_SYSTEM_PROMPT,
   type LlmProvider,
   type ReviewOptions,
 } from "./review.js";
+
+export {
+  runReviewPipeline,
+  createFixturePoster,
+  type GithubReviewPoster,
+  type PipelineLogger,
+  type PostedReview,
+  type ReviewComment,
+  type RunPipelineInput,
+  type RunPipelineResult,
+} from "./pipeline.js";

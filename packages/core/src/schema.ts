@@ -16,15 +16,49 @@ export const CategorySchema = z.enum([
   "other",
 ]);
 
-export const FindingSchema = z.object({
-  severity: SeveritySchema,
-  category: CategorySchema,
-  path: z.string().min(1),
-  startLine: z.number().int().positive().nullable().optional(),
-  endLine: z.number().int().positive().nullable().optional(),
-  body: z.string().min(1),
-  githubCommentUrl: z.string().url().nullable().optional(),
-});
+/**
+ * Structured finding. Accepts `message` (preferred) or legacy `body`,
+ * and `line` as an alias for `startLine`.
+ */
+const FindingInputSchema = z
+  .object({
+    severity: SeveritySchema,
+    category: CategorySchema,
+    path: z.string().min(1),
+    line: z.number().int().positive().nullable().optional(),
+    startLine: z.number().int().positive().nullable().optional(),
+    endLine: z.number().int().positive().nullable().optional(),
+    message: z.string().min(1).optional(),
+    body: z.string().min(1).optional(),
+    githubCommentUrl: z.string().url().nullable().optional(),
+  })
+  .superRefine((val, ctx) => {
+    if (!val.message && !val.body) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "message (or body) is required",
+        path: ["message"],
+      });
+    }
+  })
+  .transform((val) => {
+    const startLine = val.startLine ?? val.line ?? null;
+    const endLine = val.endLine ?? startLine;
+    const message = (val.message ?? val.body) as string;
+    return {
+      severity: val.severity,
+      category: val.category,
+      path: val.path,
+      startLine,
+      endLine,
+      /** Canonical comment text (also exposed as `body` for DB/ingest). */
+      message,
+      body: message,
+      githubCommentUrl: val.githubCommentUrl ?? null,
+    };
+  });
+
+export const FindingSchema = FindingInputSchema;
 
 export const FindingsArraySchema = z.array(FindingSchema).max(50);
 

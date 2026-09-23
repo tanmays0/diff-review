@@ -27,6 +27,10 @@ inputs:
   llm-model:
     description: "Override model id"
     required: false
+  mode:
+    description: "live (post GitHub comments) or fixture (log-only)"
+    required: false
+    default: "live"
   max-diff-chars:
     description: "Max characters of diff sent to the LLM"
     required: false

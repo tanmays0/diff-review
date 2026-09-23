@@ -27946,15 +27946,41 @@ var CategorySchema = external_exports.enum([
   "maintainability",
   "other"
 ]);
-var FindingSchema = external_exports.object({
+var FindingInputSchema = external_exports.object({
   severity: SeveritySchema,
   category: CategorySchema,
   path: external_exports.string().min(1),
+  line: external_exports.number().int().positive().nullable().optional(),
   startLine: external_exports.number().int().positive().nullable().optional(),
   endLine: external_exports.number().int().positive().nullable().optional(),
-  body: external_exports.string().min(1),
+  message: external_exports.string().min(1).optional(),
+  body: external_exports.string().min(1).optional(),
   githubCommentUrl: external_exports.string().url().nullable().optional()
+}).superRefine((val, ctx) => {
+  if (!val.message && !val.body) {
+    ctx.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      message: "message (or body) is required",
+      path: ["message"]
+    });
+  }
+}).transform((val) => {
+  const startLine = val.startLine ?? val.line ?? null;
+  const endLine = val.endLine ?? startLine;
+  const message = val.message ?? val.body;
+  return {
+    severity: val.severity,
+    category: val.category,
+    path: val.path,
+    startLine,
+    endLine,
+    /** Canonical comment text (also exposed as `body` for DB/ingest). */
+    message,
+    body: message,
+    githubCommentUrl: val.githubCommentUrl ?? null
+  };
 });
+var FindingSchema = FindingInputSchema;
 var FindingsArraySchema = external_exports.array(FindingSchema).max(50);
 var RunStatusSchema = external_exports.enum([
   "queued",
@@ -27977,6 +28003,9 @@ var IngestPayloadSchema = external_exports.object({
   githubReviewUrl: external_exports.string().url().nullable().optional(),
   findings: FindingsArraySchema.default([])
 });
+function parseFindings(input) {
+  return FindingsArraySchema.parse(input);
+}
 function safeParseFindings(input) {
   return FindingsArraySchema.safeParse(input);
 }
@@ -28090,15 +28119,15 @@ var DEFAULT_MODELS = {
   openai: "gpt-4o-mini",
   openrouter: "openai/gpt-4o-mini"
 };
-var SYSTEM = `You are diff-review, an AI code reviewer for GitHub pull requests.
+var REVIEW_SYSTEM_PROMPT = `You are diff-review, an AI code reviewer for GitHub pull requests.
 Review the unified diff for security, correctness, style, and maintainability issues.
 Return ONLY a JSON array (no markdown fences) of findings. Each finding object MUST have:
 - severity: "critical" | "high" | "medium" | "low" | "info"
 - category: "security" | "correctness" | "style" | "maintainability" | "other"
 - path: file path from the diff
-- startLine: number on the NEW file side (or null if unknown)
-- endLine: number or null
-- body: concise actionable comment (1-3 sentences)
+- line: number on the NEW file side (or null if unknown) \u2014 preferred field name
+- startLine / endLine: optional; startLine may replace line
+- message: concise actionable comment (1-3 sentences)
 
 Rules:
 - Prefer high-signal findings; skip nitpicks unless severity is info.
@@ -28136,13 +28165,13 @@ async function chatComplete(provider, apiKey, model, userContent) {
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
-      ...provider === "openrouter" ? { "HTTP-Referer": "https://diff-review.vercel.app" } : {}
+      ...provider === "openrouter" ? { "HTTP-Referer": "https://diff-review-ten.vercel.app" } : {}
     },
     body: JSON.stringify({
       model,
       temperature: 0.1,
       messages: [
-        { role: "system", content: SYSTEM },
+        { role: "system", content: REVIEW_SYSTEM_PROMPT },
         { role: "user", content: userContent }
       ]
     })
@@ -28162,7 +28191,7 @@ function buildUserPrompt(opts) {
   const header = [
     opts.repoFullName ? `Repository: ${opts.repoFullName}` : null,
     opts.prNumber != null ? `PR: #${opts.prNumber}` : null,
-    `Return at most ${max} findings.`
+    `Return at most ${max} findings as a JSON array.`
   ].filter(Boolean).join("\n");
   return `${header}
 
@@ -28179,7 +28208,7 @@ async function reviewDiff(opts) {
   if (!parsed.success) {
     raw = await chatComplete(provider, opts.apiKey, model, `${user}
 
-Your previous response was invalid JSON. Reply with ONLY a valid JSON array of findings matching the schema.`);
+Your previous response was invalid JSON. Reply with ONLY a valid JSON array of findings matching the schema (severity, category, path, line, message).`);
     parsed = tryParse(raw);
     if (!parsed.success) {
       throw new Error(`Failed to parse LLM findings: ${parsed.error}`);
@@ -28214,7 +28243,160 @@ function summarizeFindings(findings) {
   return `diff-review reported ${findings.length} finding(s): ${parts}.`;
 }
 
+// ../packages/core/dist/pipeline.js
+function splitOwnerRepo(fullName) {
+  const [owner, repo] = fullName.split("/");
+  if (!owner || !repo) {
+    throw new Error(`Invalid repository fullName: ${fullName}`);
+  }
+  return { owner, repo };
+}
+function buildReviewBody(summary, unanchored, truncated, maxDiffChars) {
+  const parts = [
+    "## diff-review",
+    summary,
+    truncated ? `_Diff truncated to ${maxDiffChars} characters before analysis._` : null,
+    unanchored.length ? [
+      "### Additional findings (not line-anchored)",
+      ...unanchored.map((f) => `- **[${f.severity}/${f.category}]** \`${f.path}\`${f.startLine != null ? `:${f.startLine}` : ""} \u2014 ${f.message}`)
+    ].join("\n") : null,
+    "_Automated review \u2014 verify before acting._"
+  ].filter(Boolean);
+  return parts.join("\n\n");
+}
+function createFixturePoster(log = console.log) {
+  return {
+    async postPullRequestReview(args) {
+      log(`[fixture] skip GitHub comments for ${args.owner}/${args.repo}#${args.pullNumber} (${args.comments.length} inline, body ${args.body.length} chars)`);
+      return { reviewUrl: null, commentUrls: args.comments.map(() => null) };
+    }
+  };
+}
+async function runReviewPipeline(input) {
+  const log = input.log ?? console.log;
+  const maxDiffChars = input.maxDiffChars ?? 8e4;
+  const maxFindings = input.maxFindings ?? 20;
+  const diff = truncateDiff(input.diff, maxDiffChars);
+  const parsedDiff = parseUnifiedDiff(diff, maxDiffChars);
+  let rawFindings;
+  if (input.findingsOverride !== void 0) {
+    rawFindings = parseFindings(input.findingsOverride).slice(0, maxFindings);
+    log(`[pipeline] using findingsOverride (${rawFindings.length})`);
+  } else {
+    if (!input.llm?.apiKey) {
+      throw new Error("LLM apiKey required when findingsOverride is not set");
+    }
+    rawFindings = await reviewDiff({
+      provider: input.llm.provider ?? "groq",
+      apiKey: input.llm.apiKey,
+      model: input.llm.model,
+      maxFindings,
+      diff,
+      repoFullName: input.repository.fullName,
+      prNumber: input.prNumber
+    });
+  }
+  const findings = anchorFindings(rawFindings, parsedDiff);
+  const summary = summarizeFindings(findings);
+  const inline = findings.filter((f) => f.anchored && f.position != null).slice(0, 20).map((f) => ({
+    path: f.path,
+    position: f.position,
+    body: `**[${f.severity}/${f.category}]** ${f.message}
+
+<sub>diff-review</sub>`
+  }));
+  const unanchored = findings.filter((f) => !f.anchored || f.position == null);
+  const reviewBody = buildReviewBody(summary, unanchored, parsedDiff.truncated, maxDiffChars);
+  const poster = input.mode === "fixture" ? createFixturePoster(log) : input.poster;
+  if (input.mode === "live" && !poster) {
+    throw new Error("live mode requires a GithubReviewPoster");
+  }
+  const { owner, repo } = splitOwnerRepo(input.repository.fullName);
+  const posted = await poster.postPullRequestReview({
+    owner,
+    repo,
+    pullNumber: input.prNumber,
+    commitId: input.headSha,
+    body: reviewBody,
+    comments: inline
+  });
+  const commentsPosted = input.mode === "live" && (inline.length > 0 || reviewBody.length > 0) && posted.reviewUrl != null;
+  if (input.mode === "fixture") {
+    log(`[fixture] summary: ${summary}`);
+  }
+  const ingest2 = {
+    repository: {
+      fullName: input.repository.fullName,
+      githubRepoId: input.repository.githubRepoId ?? null
+    },
+    prNumber: input.prNumber,
+    prUrl: input.prUrl,
+    headSha: input.headSha,
+    status: "completed",
+    mode: input.mode,
+    summary: input.mode === "fixture" ? `${summary} (fixture \u2014 GitHub comments not posted)` : summary,
+    githubReviewUrl: input.mode === "fixture" ? null : posted.reviewUrl ?? null,
+    findings: findings.map((f) => ({
+      severity: f.severity,
+      category: f.category,
+      path: f.path,
+      startLine: f.startLine,
+      endLine: f.endLine,
+      message: f.message,
+      body: f.body,
+      githubCommentUrl: null
+    }))
+  };
+  return {
+    mode: input.mode,
+    truncated: parsedDiff.truncated,
+    findings,
+    summary,
+    githubReviewUrl: ingest2.githubReviewUrl ?? null,
+    commentsPosted,
+    ingest: ingest2
+  };
+}
+
 // src/main.ts
+function createOctokitPoster(token, log) {
+  const octokit = github.getOctokit(token);
+  return {
+    async postPullRequestReview(args) {
+      const review = await octokit.rest.pulls.createReview({
+        owner: args.owner,
+        repo: args.repo,
+        pull_number: args.pullNumber,
+        commit_id: args.commitId,
+        event: "COMMENT",
+        body: args.body,
+        comments: args.comments.length > 0 ? args.comments : void 0
+      });
+      const reviewUrl = review.data.html_url ?? `https://github.com/${args.owner}/${args.repo}/pull/${args.pullNumber}#pullrequestreview-${review.data.id}`;
+      log(`Posted GitHub review ${reviewUrl}`);
+      return {
+        reviewUrl,
+        commentUrls: args.comments.map(() => null)
+      };
+    }
+  };
+}
+async function ingest(apiUrl, secret, payload) {
+  const res = await fetch(apiUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${secret}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Ingest failed ${res.status}: ${text.slice(0, 400)}`);
+  }
+  const json = await res.json();
+  return json.id ?? "";
+}
 async function run() {
   const token = core.getInput("github-token", { required: true });
   const apiUrl = core.getInput("api-url", { required: true });
@@ -28223,6 +28405,8 @@ async function run() {
   const model = core.getInput("llm-model") || void 0;
   const maxDiffChars = Number(core.getInput("max-diff-chars") || "80000");
   const maxFindings = Number(core.getInput("max-findings") || "20");
+  const modeInput = (core.getInput("mode") || "live").toLowerCase();
+  const mode = modeInput === "fixture" ? "fixture" : "live";
   const groqKey = core.getInput("groq-api-key") || process.env.GROQ_API_KEY || "";
   const openaiKey = core.getInput("openai-api-key") || process.env.OPENAI_API_KEY || "";
   const openrouterKey = core.getInput("openrouter-api-key") || process.env.OPENROUTER_API_KEY || "";
@@ -28260,53 +28444,10 @@ async function run() {
     core.info("Empty diff \u2014 nothing to review");
     return;
   }
-  const diff = truncateDiff(rawDiff, maxDiffChars);
-  const parsed = parseUnifiedDiff(diff, maxDiffChars);
-  core.info(
-    `Reviewing ${fullName}#${prNumber} (${diff.length} chars, truncated=${parsed.truncated})`
-  );
-  const findings = await reviewDiff({
-    provider,
-    apiKey,
-    model,
-    maxFindings,
-    diff,
-    repoFullName: fullName,
-    prNumber
-  });
-  const anchored = anchorFindings(findings, parsed);
-  const summary = summarizeFindings(anchored);
-  const inline = anchored.filter((f) => f.anchored && f.position != null).slice(0, 20).map((f) => ({
-    path: f.path,
-    position: f.position,
-    body: `**[${f.severity}/${f.category}]** ${f.body}
-
-<sub>diff-review</sub>`
-  }));
-  const bodyFindings = anchored.filter((f) => !f.anchored || f.position == null);
-  const bodyParts = [
-    `## diff-review`,
-    summary,
-    parsed.truncated ? `_Diff truncated to ${maxDiffChars} characters before analysis._` : null,
-    bodyFindings.length ? [
-      "### Additional findings (not line-anchored)",
-      ...bodyFindings.map(
-        (f) => `- **[${f.severity}/${f.category}]** \`${f.path}\`${f.startLine != null ? `:${f.startLine}` : ""} \u2014 ${f.body}`
-      )
-    ].join("\n") : null,
-    "_Automated review \u2014 verify before acting._"
-  ].filter(Boolean);
-  const review = await octokit.rest.pulls.createReview({
-    owner,
-    repo,
-    pull_number: prNumber,
-    commit_id: headSha,
-    event: "COMMENT",
-    body: bodyParts.join("\n\n"),
-    comments: inline.length > 0 ? inline : void 0
-  });
-  const reviewUrl = review.data.html_url ?? `${prUrl}#pullrequestreview-${review.data.id}`;
-  const ingestBody = {
+  const log = (m) => core.info(m);
+  const result = await runReviewPipeline({
+    mode,
+    diff: rawDiff,
     repository: {
       fullName,
       githubRepoId: String(ctx.payload.repository?.id ?? "")
@@ -28314,36 +28455,17 @@ async function run() {
     prNumber,
     prUrl,
     headSha,
-    status: "completed",
-    mode: "live",
-    summary,
-    githubReviewUrl: reviewUrl,
-    findings: anchored.map((f) => ({
-      severity: f.severity,
-      category: f.category,
-      path: f.path,
-      startLine: f.startLine ?? null,
-      endLine: f.endLine ?? null,
-      body: f.body,
-      githubCommentUrl: null
-    }))
-  };
-  const ingestRes = await fetch(apiUrl, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${ingestSecret}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(ingestBody)
+    maxDiffChars,
+    maxFindings,
+    llm: { provider, apiKey, model },
+    poster: mode === "live" ? createOctokitPoster(token, log) : void 0,
+    log
   });
-  if (!ingestRes.ok) {
-    const text = await ingestRes.text();
-    throw new Error(`Ingest failed ${ingestRes.status}: ${text.slice(0, 400)}`);
-  }
-  const ingestJson = await ingestRes.json();
-  core.info(`Ingested run ${ingestJson.id ?? "(unknown)"}`);
-  core.setOutput("run-id", ingestJson.id ?? "");
-  core.setOutput("review-url", reviewUrl);
+  const runId = await ingest(apiUrl, ingestSecret, result.ingest);
+  core.info(`Ingested run ${runId}`);
+  core.setOutput("run-id", runId);
+  core.setOutput("review-url", result.githubReviewUrl ?? "");
+  core.setOutput("mode", mode);
 }
 run().catch((err) => {
   core.setFailed(err instanceof Error ? err.message : String(err));

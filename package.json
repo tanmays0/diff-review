@@ -4,7 +4,9 @@
   "version": "0.1.0",
   "packageManager": "pnpm@9.15.0",
   "scripts": {
-    "dev": "pnpm --filter @diff-review/web dev",
+    "dev": "pnpm --filter @diff-review/web dev --port 3001",
+    "dev:web": "pnpm --filter @diff-review/web dev --port 3001",
+    "review:fixture": "curl -sS -X POST http://localhost:3001/api/review -H 'content-type: application/json' -d '{\"mode\":\"fixture\",\"persist\":false}' | python3 -m json.tool",
     "build": "pnpm --filter @diff-review/core build && pnpm --filter @diff-review/db build && pnpm --filter @diff-review/action build && pnpm --filter @diff-review/web build",
     "build:action": "pnpm --filter @diff-review/action build",
     "start": "pnpm --filter @diff-review/web start",

@@ -1,9 +1,9 @@
-CREATE TABLE IF NOT EXISTS "users" (
+CREATE TABLE IF NOT EXISTS "diff_review_users" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"github_id" text,
 	"login" text NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "users_github_id_unique" UNIQUE("github_id")
+	CONSTRAINT "diff_review_users_github_id_unique" UNIQUE("github_id")
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "repositories" (
@@ -40,12 +40,6 @@ CREATE TABLE IF NOT EXISTS "findings" (
 	"github_comment_url" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
---> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "repositories" ADD CONSTRAINT "repositories_owner_user_id_users_id_fk" FOREIGN KEY ("owner_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;
 --> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "review_runs" ADD CONSTRAINT "review_runs_repository_id_repositories_id_fk" FOREIGN KEY ("repository_id") REFERENCES "public"."repositories"("id") ON DELETE no action ON UPDATE no action;

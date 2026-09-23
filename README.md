@@ -7,11 +7,15 @@ AI PR reviewer that comments on GitHub diffs (security / correctness / style) wi
 
 ## Recruiter demo (5 steps)
 
-1. Open the **Live** URL in Incognito — no login wall.
-2. Go to **Runs** — see seeded **fixture** reviews (and any **live** Action runs).
-3. Open a run — inspect severity, category, file path, and finding body.
-4. If a **live** run exists, click **Open PR** / **GitHub review**; otherwise see `DEMO.md` for the fixture note.
-5. Skim **Settings** for Action install secrets + workflow snippet; explain pipeline: Action → diff → LLM → PR comments → ingest → UI.
+1. Open **https://diff-review-ten.vercel.app** in **Incognito** — no login wall.
+2. Click **Runs** — see seeded **fixture** reviews (demo data; labeled honestly).
+3. Open a run — read severity, category, file path, and finding message; click **Open PR** for the linked (demo) PR URL.
+4. Note **fixture** vs future **live** badges — live runs appear after the Action posts a real review.
+5. Open **Settings** — walk through Action secrets + workflow; pipeline: Action → diff → LLM → PR comments → ingest → UI.
+
+## Resume one-liner
+
+> Built diff-review — AI PR reviewer that comments on GitHub diffs (security/correctness/style) with a live dashboard for review history.
 
 ## Architecture
 
@@ -21,7 +25,7 @@ GitHub PR → Action (Octokit + packages/core LLM)
          → POST /api/ingest → Postgres → Next.js dashboard
 ```
 
-Primary integration: **GitHub Action** (App is stretch). Fixture seeds keep the Live URL useful before Action install.
+Primary: **GitHub Action**. GitHub App is stretch (see DEPLOY.md). Built-in fixtures keep the Live URL useful before Action/App install.
 
 ## Stack
 
@@ -32,27 +36,24 @@ Primary integration: **GitHub Action** (App is stretch). Fixture seeds keep the 
 
 ```bash
 pnpm install
-docker compose up -d
+docker compose up -d          # Postgres on :5433
 cp .env.example .env.local
-# set DATABASE_URL=postgresql://diffreview:diffreview@localhost:5433/diffreview
 pnpm db:migrate && pnpm db:seed
-pnpm dev
+pnpm dev                      # http://localhost:3001 (portfolio can keep :3000)
 ```
-
-Tests:
 
 ```bash
 pnpm test
 ```
 
-## Action install
+## GitHub Action install
 
-1. Add secrets: `DIFF_REVIEW_API_URL`, `DIFF_REVIEW_INGEST_SECRET`, `GROQ_API_KEY`
-2. Copy workflow from [`docs/action-workflow.example.yml`](docs/action-workflow.example.yml) (or Settings page)
-3. Open a PR — review comments + dashboard run appear
+1. Repo secrets: `DIFF_REVIEW_API_URL=https://diff-review-ten.vercel.app/api/ingest`, `DIFF_REVIEW_INGEST_SECRET`, `GROQ_API_KEY`
+2. Add workflow from [`docs/action-workflow.example.yml`](docs/action-workflow.example.yml) or Settings page
+3. Open a PR → review comments + dashboard `live` run
 
-See [DEPLOY.md](DEPLOY.md) and [DEMO.md](DEMO.md). Spec Kit: [`specs/001-diff-review-product/`](specs/001-diff-review-product/).
+## GitHub App (stretch / later)
 
-## Resume line
+When you create the App: Contents (read), Pull requests (read/write); subscribe to `pull_request`; set `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_INSTALLATION_ID`, `GITHUB_WEBHOOK_SECRET`. Webhook handler is not in Action-first v1 — see [DEPLOY.md](DEPLOY.md).
 
-> Built diff-review — AI PR reviewer that comments on GitHub diffs (security/correctness/style) with a live dashboard for review history.
+See [DEMO.md](DEMO.md), [DEPLOY.md](DEPLOY.md), Spec Kit under [`specs/001-diff-review-product/`](specs/001-diff-review-product/).

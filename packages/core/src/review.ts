@@ -18,15 +18,15 @@ const DEFAULT_MODELS: Record<LlmProvider, string> = {
   openrouter: "openai/gpt-4o-mini",
 };
 
-const SYSTEM = `You are diff-review, an AI code reviewer for GitHub pull requests.
+export const REVIEW_SYSTEM_PROMPT = `You are diff-review, an AI code reviewer for GitHub pull requests.
 Review the unified diff for security, correctness, style, and maintainability issues.
 Return ONLY a JSON array (no markdown fences) of findings. Each finding object MUST have:
 - severity: "critical" | "high" | "medium" | "low" | "info"
 - category: "security" | "correctness" | "style" | "maintainability" | "other"
 - path: file path from the diff
-- startLine: number on the NEW file side (or null if unknown)
-- endLine: number or null
-- body: concise actionable comment (1-3 sentences)
+- line: number on the NEW file side (or null if unknown) — preferred field name
+- startLine / endLine: optional; startLine may replace line
+- message: concise actionable comment (1-3 sentences)
 
 Rules:
 - Prefer high-signal findings; skip nitpicks unless severity is info.
@@ -73,14 +73,14 @@ async function chatComplete(
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
       ...(provider === "openrouter"
-        ? { "HTTP-Referer": "https://diff-review.vercel.app" }
+        ? { "HTTP-Referer": "https://diff-review-ten.vercel.app" }
         : {}),
     },
     body: JSON.stringify({
       model,
       temperature: 0.1,
       messages: [
-        { role: "system", content: SYSTEM },
+        { role: "system", content: REVIEW_SYSTEM_PROMPT },
         { role: "user", content: userContent },
       ],
     }),
@@ -104,7 +104,7 @@ function buildUserPrompt(opts: ReviewOptions): string {
   const header = [
     opts.repoFullName ? `Repository: ${opts.repoFullName}` : null,
     opts.prNumber != null ? `PR: #${opts.prNumber}` : null,
-    `Return at most ${max} findings.`,
+    `Return at most ${max} findings as a JSON array.`,
   ]
     .filter(Boolean)
     .join("\n");
@@ -126,7 +126,7 @@ export async function reviewDiff(opts: ReviewOptions): Promise<Finding[]> {
       provider,
       opts.apiKey,
       model,
-      `${user}\n\nYour previous response was invalid JSON. Reply with ONLY a valid JSON array of findings matching the schema.`,
+      `${user}\n\nYour previous response was invalid JSON. Reply with ONLY a valid JSON array of findings matching the schema (severity, category, path, line, message).`,
     );
     parsed = tryParse(raw);
     if (!parsed.success) {
@@ -137,7 +137,9 @@ export async function reviewDiff(opts: ReviewOptions): Promise<Finding[]> {
   return FindingsArraySchema.parse(parsed.data.slice(0, max));
 }
 
-function tryParse(raw: string): { success: true; data: Finding[] } | { success: false; error: string } {
+function tryParse(
+  raw: string,
+): { success: true; data: Finding[] } | { success: false; error: string } {
   try {
     const json = extractJsonArray(raw);
     const result = safeParseFindings(json);
