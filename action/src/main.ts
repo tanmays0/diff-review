@@ -140,9 +140,18 @@ async function run(): Promise<void> {
     log,
   });
 
-  const runId = await ingest(apiUrl, ingestSecret, result.ingest);
-  core.info(`Ingested run ${runId}`);
-  core.setOutput("run-id", runId);
+  try {
+    const runId = await ingest(apiUrl, ingestSecret, result.ingest);
+    core.info(`Ingested run ${runId}`);
+    core.setOutput("run-id", runId);
+  } catch (err) {
+    // PR comments may already be live; dashboard needs DATABASE_URL + matching secret.
+    const msg = err instanceof Error ? err.message : String(err);
+    core.warning(
+      `Ingest failed (dashboard will not show a live run until this is fixed): ${msg}`,
+    );
+    core.setOutput("run-id", "");
+  }
   core.setOutput("review-url", result.githubReviewUrl ?? "");
   core.setOutput("mode", mode);
 }

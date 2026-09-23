@@ -70,7 +70,7 @@ async function RunsList() {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <span
-                    className="text-sm font-medium"
+                    className="min-w-0 break-all text-sm font-medium"
                     style={{
                       fontFamily: "var(--font-ibm-mono), var(--font-mono)",
                     }}

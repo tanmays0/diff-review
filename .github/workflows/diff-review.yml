@@ -1,0 +1,25 @@
+# Consumer workflow for this monorepo (uses local composite action).
+# External repos: copy docs/action-workflow.example.yml and change
+#   uses: ./action
+# to
+#   uses: tanmays0/diff-review/action@main
+name: diff-review
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./action
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          api-url: ${{ secrets.DIFF_REVIEW_API_URL }}
+          ingest-secret: ${{ secrets.DIFF_REVIEW_INGEST_SECRET }}
+          groq-api-key: ${{ secrets.GROQ_API_KEY }}

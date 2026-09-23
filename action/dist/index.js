@@ -19744,10 +19744,10 @@ Support boolean input list: \`true | True | TRUE | false | False | FALSE\``);
       (0, command_1.issueCommand)("error", (0, utils_1.toCommandProperties)(properties), message instanceof Error ? message.toString() : message);
     }
     exports.error = error;
-    function warning(message, properties = {}) {
+    function warning2(message, properties = {}) {
       (0, command_1.issueCommand)("warning", (0, utils_1.toCommandProperties)(properties), message instanceof Error ? message.toString() : message);
     }
-    exports.warning = warning;
+    exports.warning = warning2;
     function notice(message, properties = {}) {
       (0, command_1.issueCommand)("notice", (0, utils_1.toCommandProperties)(properties), message instanceof Error ? message.toString() : message);
     }
@@ -28461,9 +28461,17 @@ async function run() {
     poster: mode === "live" ? createOctokitPoster(token, log) : void 0,
     log
   });
-  const runId = await ingest(apiUrl, ingestSecret, result.ingest);
-  core.info(`Ingested run ${runId}`);
-  core.setOutput("run-id", runId);
+  try {
+    const runId = await ingest(apiUrl, ingestSecret, result.ingest);
+    core.info(`Ingested run ${runId}`);
+    core.setOutput("run-id", runId);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    core.warning(
+      `Ingest failed (dashboard will not show a live run until this is fixed): ${msg}`
+    );
+    core.setOutput("run-id", "");
+  }
   core.setOutput("review-url", result.githubReviewUrl ?? "");
   core.setOutput("mode", mode);
 }

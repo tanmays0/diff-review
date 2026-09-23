@@ -8,10 +8,12 @@ AI PR reviewer that comments on GitHub diffs (security / correctness / style) wi
 ## Recruiter demo (5 steps)
 
 1. Open **https://diff-review-ten.vercel.app** in **Incognito** — no login wall.
-2. Click **Runs** — see seeded **fixture** reviews (demo data; labeled honestly).
-3. Open a run — read severity, category, file path, and finding message; click **Open PR** for the linked (demo) PR URL.
-4. Note **fixture** vs future **live** badges — live runs appear after the Action posts a real review.
-5. Open **Settings** — walk through Action secrets + workflow; pipeline: Action → diff → LLM → PR comments → ingest → UI.
+2. Click **Runs** — seeded **fixture** reviews from Postgres (honest labels; in-code fallback if DB is down).
+3. Open a run — severity, category, file path, finding body; **Open PR** link.
+4. Prefer a green **live** badge when present (Action → PR comments → ingest). Otherwise fixtures alone still demo the product.
+5. **Settings** — Action secrets + workflow; pipeline: Action → diff → LLM → PR comments → ingest → UI.
+
+Full script: [DEMO.md](DEMO.md).
 
 ## Resume one-liner
 

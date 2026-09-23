@@ -16,24 +16,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           background: "color-mix(in srgb, var(--bg) 85%, transparent)",
         }}
       >
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
-          <Link href="/" className="flex items-baseline gap-2">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-3">
+          <Link href="/" className="min-w-0 shrink items-baseline gap-2 flex">
             <span
               className="text-lg font-semibold tracking-tight"
               style={{ fontFamily: "var(--font-ibm-mono), var(--font-mono)" }}
             >
               diff-review
             </span>
-            <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+            <span
+              className="hidden text-xs sm:inline"
+              style={{ color: "var(--text-muted)" }}
+            >
               AI PR reviewer
             </span>
           </Link>
-          <nav className="flex items-center gap-1 text-sm">
+          <nav className="flex max-w-full flex-wrap items-center gap-0.5 text-sm sm:gap-1">
             {links.map((l) => (
               <Link
                 key={l.href}
                 href={l.href}
-                className="rounded px-3 py-1.5 transition-colors hover:bg-[var(--bg-soft)]"
+                className="rounded px-2 py-1.5 transition-colors hover:bg-[var(--bg-soft)] sm:px-3"
                 style={{ color: "var(--text-muted)" }}
               >
                 {l.label}
@@ -41,7 +44,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             ))}
             <a
               href="https://github.com/tanmays0/diff-review"
-              className="ml-2 rounded border px-3 py-1.5 text-xs"
+              className="ml-1 rounded border px-2 py-1.5 text-xs sm:ml-2 sm:px-3"
               style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
               target="_blank"
               rel="noreferrer"
