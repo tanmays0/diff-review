@@ -15,11 +15,11 @@ cd apps/web
 vercel link   # root directory: apps/web (or monorepo root with vercel.json)
 vercel env add DATABASE_URL
 vercel env add DIFF_REVIEW_INGEST_SECRET
-vercel env add NEXT_PUBLIC_APP_URL
+vercel env add NEXT_PUBLIC_APP_URL   # https://diff-review-ten.vercel.app
 vercel --prod
 ```
 
-Monorepo build (from repo root / `vercel.json`):
+**Live production alias:** https://diff-review-ten.vercel.app
 
 - Install: `pnpm install`
 - Build: `pnpm --filter @diff-review/core build && pnpm --filter @diff-review/db build && pnpm --filter @diff-review/web build`

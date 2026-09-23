@@ -1,6 +1,6 @@
 # Demo script (recruiters)
 
-**Live:** https://diff-review.vercel.app *(set after deploy)*
+**Live:** https://diff-review-ten.vercel.app
 
 ## 5 steps
 

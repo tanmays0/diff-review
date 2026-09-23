@@ -2,7 +2,7 @@
 
 AI PR reviewer that comments on GitHub diffs (security / correctness / style) with a live dashboard for review history.
 
-**Live:** https://diff-review.vercel.app *(update after first deploy)*  
+**Live:** https://diff-review-ten.vercel.app  
 **Repo:** https://github.com/tanmays0/diff-review
 
 ## Recruiter demo (5 steps)
