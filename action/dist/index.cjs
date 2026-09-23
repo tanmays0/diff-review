@@ -28435,14 +28435,19 @@ async function run() {
     }
   );
   const rawDiff = typeof diffRes.data === "string" ? diffRes.data : String(diffRes.data ?? "");
-  if (!rawDiff.trim()) {
-    core.info("Empty diff \u2014 nothing to review");
+  const filteredDiff = rawDiff.split(/(?=^diff --git )/m).filter((chunk) => {
+    if (!chunk.trim()) return false;
+    const head = chunk.slice(0, 240);
+    return !/action\/dist\//.test(head) && !/\.(?:cjs|map|lock)\b/.test(head);
+  }).join("");
+  if (!filteredDiff.trim()) {
+    core.info("Empty diff after filtering generated paths \u2014 nothing to review");
     return;
   }
   const log = (m) => core.info(m);
   const result = await runReviewPipeline({
     mode,
-    diff: rawDiff,
+    diff: filteredDiff,
     repository: {
       fullName,
       githubRepoId: String(ctx.payload.repository?.id ?? "")
