@@ -12,8 +12,8 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "pnpm exec tsc -p tsconfig.json",
+    "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/migrate.ts",
     "db:seed": "tsx src/seed.ts"
@@ -21,12 +21,12 @@
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",
     "drizzle-orm": "^0.39.3",
-    "postgres": "^3.4.5"
+    "postgres": "^3.4.5",
+    "typescript": "^5"
   },
   "devDependencies": {
     "@types/node": "^20",
     "drizzle-kit": "^0.30.4",
-    "tsx": "^4.19.3",
-    "typescript": "^5"
+    "tsx": "^4.19.3"
   }
 }
