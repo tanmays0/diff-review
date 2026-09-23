@@ -28110,7 +28110,7 @@ function truncateDiff(diff, maxChars) {
 
 // ../packages/core/dist/review.js
 var DEFAULT_MODELS = {
-  groq: "llama-3.3-70b-versatile",
+  groq: "openai/gpt-oss-20b",
   openai: "gpt-4o-mini",
   openrouter: "openai/gpt-4o-mini"
 };

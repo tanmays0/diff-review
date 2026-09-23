@@ -27,3 +27,4 @@ jobs:
           api-url: ${{ secrets.DIFF_REVIEW_API_URL }}
           ingest-secret: ${{ secrets.DIFF_REVIEW_INGEST_SECRET }}
           groq-api-key: ${{ secrets.GROQ_API_KEY }}
+          llm-model: openai/gpt-oss-20b

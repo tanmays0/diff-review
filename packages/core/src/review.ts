@@ -13,7 +13,7 @@ export type ReviewOptions = {
 };
 
 const DEFAULT_MODELS: Record<LlmProvider, string> = {
-  groq: "llama-3.3-70b-versatile",
+  groq: "openai/gpt-oss-20b",
   openai: "gpt-4o-mini",
   openrouter: "openai/gpt-4o-mini",
 };
